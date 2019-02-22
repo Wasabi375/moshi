@@ -17,6 +17,7 @@ package com.squareup.moshi.kotlin.codegen
 
 import com.squareup.kotlinpoet.ARRAY
 import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
@@ -35,7 +36,6 @@ import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import java.lang.reflect.Type
-import javax.lang.model.element.TypeElement
 
 /** Generates a JSON adapter for a target type. */
 internal class AdapterGenerator(
@@ -82,7 +82,7 @@ internal class AdapterGenerator(
       }})", JsonReader.Options::class.asTypeName())
       .build()
 
-  fun generateFile(generatedOption: TypeElement?): FileSpec {
+  fun generateFile(generatedOption: ClassName?): FileSpec {
     for (property in propertyList) {
       property.allocateNames(nameAllocator)
     }
@@ -93,12 +93,12 @@ internal class AdapterGenerator(
     return result.build()
   }
 
-  private fun generateType(generatedOption: TypeElement?): TypeSpec {
+  private fun generateType(generatedOption: ClassName?): TypeSpec {
     val result = TypeSpec.classBuilder(adapterName)
         .addOriginatingElement(originalElement)
 
     generatedOption?.let {
-      result.addAnnotation(AnnotationSpec.builder(it.asClassName())
+      result.addAnnotation(AnnotationSpec.builder(it)
           .addMember("value = [%S]", JsonClassCodegenProcessor::class.java.canonicalName)
           .addMember("comments = %S", "https://github.com/square/moshi")
           .build())
