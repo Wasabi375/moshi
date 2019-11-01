@@ -380,7 +380,8 @@ private val ImmutableKmProperty.hasInlinedType: Boolean
   }
 
 // check getter before field (field might have the type of Delegate)
-private val ImmutableKmProperty.returnTypeSignature: String get() = getterSignature?.desc?.drop(2) ?: fieldSignature?.desc!!
+private val ImmutableKmProperty.returnTypeSignature: String get() =
+  getterSignature?.desc?.let{ it.substring(it.lastIndexOf(')') + 1) } ?: fieldSignature?.desc!!
 
 private fun typeNameFromSignature(signature: String): TypeName {
   return when(signature) {
