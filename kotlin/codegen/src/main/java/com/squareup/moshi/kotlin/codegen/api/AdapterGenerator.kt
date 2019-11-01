@@ -15,17 +15,7 @@
  */
 package com.squareup.moshi.kotlin.codegen.api
 
-import com.squareup.kotlinpoet.ARRAY
-import com.squareup.kotlinpoet.AnnotationSpec
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.INT
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
-import com.squareup.kotlinpoet.NameAllocator
-import com.squareup.kotlinpoet.ParameterSpec
-import com.squareup.kotlinpoet.ParameterizedTypeName
+import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
@@ -34,11 +24,15 @@ import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.joinToCode
+import com.squareup.kotlinpoet.metadata.ImmutableKmProperty
+import com.squareup.kotlinpoet.metadata.isNullable
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.internal.Util
+import kotlinx.metadata.ClassName
+import kotlinx.metadata.KmClassifier
 import com.squareup.moshi.kotlin.codegen.api.FromJsonComponent.ParameterOnly
 import com.squareup.moshi.kotlin.codegen.api.FromJsonComponent.ParameterProperty
 import com.squareup.moshi.kotlin.codegen.api.FromJsonComponent.PropertyOnly
@@ -278,10 +272,13 @@ internal class AdapterGenerator(
     }
 
     for (input in components) {
-      if (input is ParameterOnly ||
-          (input is ParameterProperty && input.property.isTransient)) {
+      if (input is ParameterOnly) {
         updateMaskIndexes()
         constructorPropertyTypes += input.type.asTypeBlock()
+        continue
+      } else if (input is ParameterProperty && input.property.isTransient) {
+        updateMaskIndexes()
+        constructorPropertyTypes += input.property.target.inlinedTypeOrType.asTypeBlock()
         continue
       } else if (input is PropertyOnly && input.property.isTransient) {
         continue
@@ -322,7 +319,7 @@ internal class AdapterGenerator(
         }
       }
       if (property.hasConstructorParameter) {
-        constructorPropertyTypes += property.target.type.asTypeBlock()
+        constructorPropertyTypes += property.target.inlinedTypeOrType.asTypeBlock()
       }
       propertyIndex++
       updateMaskIndexes()
@@ -399,7 +396,13 @@ internal class AdapterGenerator(
           // the transient type may be a primitive type.
           result.addCode(input.type.rawType().defaultPrimitiveValue())
         } else {
-          result.addCode("%N", (input as ParameterProperty).property.localName)
+          val property = (input as ParameterProperty).property
+          if(property.target.inlinedType != null) {
+            result.addCode("%N?.let{%T.unwrapInlinedValue(it)} ?: %L",
+              property.localName, MOSHI_UTIL, property.target.inlinedType.rawType().defaultPrimitiveValue())
+          } else {
+            result.addCode("%N", property.localName)
+          }
         }
       } else if (input !is ParameterOnly) {
         val property = (input as ParameterProperty).property

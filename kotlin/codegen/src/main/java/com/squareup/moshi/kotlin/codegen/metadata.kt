@@ -15,6 +15,7 @@
  */
 package com.squareup.moshi.kotlin.codegen
 
+import com.squareup.kotlinpoet.ARRAY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.KModifier
@@ -23,17 +24,21 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.STAR
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.WildcardTypeName
 import com.squareup.kotlinpoet.asClassName
 import com.squareup.kotlinpoet.asTypeName
 import com.squareup.kotlinpoet.classinspector.elements.ElementsClassInspector
 import com.squareup.kotlinpoet.metadata.KotlinPoetMetadataPreview
+import com.squareup.kotlinpoet.metadata.ImmutableKmProperty
+import com.squareup.kotlinpoet.metadata.ImmutableKmTypeProjection
 import com.squareup.kotlinpoet.metadata.isAbstract
 import com.squareup.kotlinpoet.metadata.isClass
 import com.squareup.kotlinpoet.metadata.isEnum
 import com.squareup.kotlinpoet.metadata.isInner
 import com.squareup.kotlinpoet.metadata.isLocal
+import com.squareup.kotlinpoet.metadata.isNullable
 import com.squareup.kotlinpoet.metadata.isSealed
 import com.squareup.kotlinpoet.metadata.specs.ClassInspector
 import com.squareup.kotlinpoet.metadata.specs.TypeNameAliasTag
@@ -48,6 +53,8 @@ import com.squareup.moshi.kotlin.codegen.api.TargetConstructor
 import com.squareup.moshi.kotlin.codegen.api.TargetParameter
 import com.squareup.moshi.kotlin.codegen.api.TargetProperty
 import com.squareup.moshi.kotlin.codegen.api.TargetType
+import kotlinx.metadata.KmClassifier
+import kotlinx.metadata.KmVariance
 import java.lang.annotation.ElementType
 import java.lang.annotation.Retention
 import java.lang.annotation.RetentionPolicy
@@ -225,7 +232,8 @@ private fun declaredProperties(
         parameter = parameter,
         visibility = property.modifiers.visibility(),
         jsonName = parameter?.jsonName ?: property.annotations.jsonName()
-        ?: name.escapeDollarSigns()
+        ?: name.escapeDollarSigns(),
+        inlinedType = property.toInlinedType()
     )
   }
 
@@ -349,4 +357,149 @@ private fun TypeName.unwrapTypeAlias(): TypeName {
     }
     else -> throw UnsupportedOperationException("Type '${javaClass.simpleName}' is illegal. Only classes, parameterized types, wildcard types, or type variables are allowed.")
   }
+}
+
+private fun PropertySpec.toInlinedType(): TypeName? {
+  val kmProperty = tag(ImmutableKmProperty::class) ?: return null
+  if(!kmProperty.hasInlinedType) return null
+
+  val typeSignature = kmProperty.returnTypeSignature
+
+  return typeNameFromSignature(typeSignature).also {
+    println("Inlined TypeName for ${kmProperty.returnType.classifier} is $it")
+  }
+}
+
+private val ImmutableKmProperty.hasInlinedType: Boolean
+  get() {
+    val name = (returnType.classifier as? KmClassifier.Class)?.name ?: return false
+    val nonInlinedTypeDescriptor = jvmTypeSignatureFromName(name, returnType.isNullable, returnType.arguments)
+
+    //println("Name: $name, before inline(guess): $nonInlinedTypeDescriptor, after inline: $returnTypeSignature")
+    return returnTypeSignature != nonInlinedTypeDescriptor
+  }
+
+// check getter before field (field might have the type of Delegate)
+private val ImmutableKmProperty.returnTypeSignature: String get() = getterSignature?.desc?.drop(2) ?: fieldSignature?.desc!!
+
+private fun typeNameFromSignature(signature: String): TypeName {
+  return when(signature) {
+    // primitives
+    "B" -> Byte::class.asTypeName()
+    "C" -> Char::class.asTypeName()
+    "F" -> Float::class.asTypeName()
+    "D" -> Double::class.asTypeName()
+    "I" -> Int::class.asTypeName()
+    "J" -> Long::class.asTypeName()
+    "S" -> Short::class.asTypeName()
+    "Z" -> Boolean::class.asTypeName()
+
+    // primitive arrays
+    "[B" -> ByteArray::class.asTypeName()
+    "[C" -> CharArray::class.asTypeName()
+    "[F" -> FloatArray::class.asTypeName()
+    "[D" -> DoubleArray::class.asTypeName()
+    "[I" -> IntArray::class.asTypeName()
+    "[J" -> LongArray::class.asTypeName()
+    "[S" -> ShortArray::class.asTypeName()
+    "[Z" -> BooleanArray::class.asTypeName()
+
+    "Ljava/lang/Object;" -> Object::class.asTypeName()
+    "Ljava/lang/Cloneable;" -> Cloneable::class.asTypeName()
+    "Ljava/lang/Comparable;" -> Comparable::class.asTypeName()
+    "Ljava/lang/Enum;" -> Enum::class.asTypeName()
+    "Ljava/lang/Annotation;" -> Annotation::class.asTypeName()
+    "Ljava/lang/CharSequence;" -> CharSequence::class.asTypeName()
+    "Ljava/lang/Number;" -> Number::class.asTypeName()
+    "Ljava/lang/Throwable;" -> Throwable::class.asTypeName()
+    "Ljava/lang/String;" -> String::class.asTypeName()
+    "Ljava/util/Map;" -> Map::class.asTypeName()
+    "Ljava/util/List;" -> List::class.asTypeName()
+    "Ljava/util/Set;" -> Set::class.asTypeName()
+    "Ljava/lang/Iterable;" -> Iterable::class.asTypeName()
+    "Ljava/util/Iterable;" -> Iterable::class.asTypeName()
+    "Ljava/util/Collection;" -> Collection::class.asTypeName()
+    "Ljava/util/ListIterator;" -> ListIterator::class.asTypeName()
+    "Ljava/util/Map.Entry;" -> Map.Entry::class.asTypeName()
+    else -> {
+      if(signature[0] == '[') {
+        with(ParameterizedTypeName) {
+          ARRAY.parameterizedBy(typeNameFromSignature(signature.substring(1)))
+        }
+      } else {
+        require(signature[0] == 'L') { "Object should start with 'L'. Found: $signature"}
+        val typeNameSig = signature.substring(1)
+        ClassName.bestGuess(typeNameSig.replace('/','.').replace('$', '.').dropLast(1))
+      }
+    }
+  }
+}
+
+private fun jvmTypeSignatureFromName(kotlinClassName: String, nullable: Boolean = false, typeArguments: List<ImmutableKmTypeProjection> = emptyList()): String {
+
+  // based on https://kotlinlang.org/docs/reference/java-interop.html#mapped-types
+  return when(kotlinClassName.toString()) {
+    // primitives
+    "kotlin/Byte" -> if(nullable) "Ljava/lang/Byte;" else "B"
+    "kotlin/Char" -> if(nullable) "Ljava/lang/Char;" else "C"
+    "kotlin/Float" -> if(nullable) "Ljava/lang/Float;" else "F"
+    "kotlin/Double" -> if(nullable) "Ljava/lang/Double;" else "D"
+    "kotlin/Int" -> if(nullable) "Ljava/lang/Integer;" else "I"
+    "kotlin/Long" -> if(nullable) "Ljava/lang/Long;" else "J"
+    "kotlin/Short" -> if(nullable) "Ljava/lang/Short;" else "S"
+    "kotlin/Boolean" -> if(nullable) "Ljava/lang/Boolean;" else "Z"
+
+    // primitive arrays
+    "kotlin/ByteArray" -> "[B"
+    "kotlin/CharArray" -> "[C"
+    "kotlin/FloatArray" -> "[F"
+    "kotlin/DoubleArray" -> "[D"
+    "kotlin/IntArray" -> "[I"
+    "kotlin/LongArray" -> "[J"
+    "kotlin/ShortArray" -> "[S"
+    "kotlin/BooleanArray" -> "[Z"
+
+    // kotlin mapped types
+    "kotlin/Any" -> "Ljava/lang/Object;"
+    "kotlin/Nothing" -> "Ljava/lang/Void;"
+    "kotlin/Cloneable" -> "Ljava/lang/Cloneable;"
+    "kotlin/Comparable" -> "Ljava/lang/Comparable;"
+    "kotlin/Enum" -> "Ljava/lang/Enum;"
+    "kotlin/Annotation" -> "Ljava/lang/Annotation;"
+    "kotlin/CharSequence" -> "Ljava/lang/CharSequence;"
+    "kotlin/Number" -> "Ljava/lang/Number;"
+    "kotlin/Throwable" -> "Ljava/lang/Throwable;"
+    "kotlin/String" -> "Ljava/lang/String;"
+    "kotlin/collections/Map" -> "Ljava/util/Map;"
+    "kotlin/collections/MutableMap" -> "Ljava/util/Map;"
+    "kotlin/collections/List" -> "Ljava/util/List;"
+    "kotlin/collections/MutableList" -> "Ljava/util/List;"
+    "kotlin/collections/Set" -> "Ljava/util/Set;"
+    "kotlin/collections/MutableSet" -> "Ljava/util/Set;"
+    "kotlin/collections/Iterable" -> "Ljava/lang/Iterable;"
+    "kotlin/collections/MutableIterable" -> "Ljava/lang/Iterable;"
+    "kotlin/collections/Iterator" -> "Ljava/util/Iterable;"
+    "kotlin/collections/MutableIterator" -> "Ljava/util/Iterable;"
+    "kotlin/collections/Collection" -> "Ljava/util/Collection;"
+    "kotlin/collections/MutableCollection" -> "Ljava/util/Collection;"
+    "kotlin/collections/ListIterator" -> "Ljava/util/ListIterator;"
+    "kotlin/collections/MutableListIterator" -> "Ljava/util/ListIterator;"
+    "kotlin/collections/Map.Entry" -> "Ljava/util/Map.Entry;"
+    "kotlin/collections/MutableMap.MutableEntry" -> "Ljava/util/Map.Entry;"
+    "kotlin/Array" -> {
+      if(typeArguments.isEmpty()) "Ljava/lang/reflect/Array;"
+      else {
+        require(typeArguments.size == 1)
+        val typeProjection = typeArguments[0]
+        val arrayType = typeProjection.type!!
+        if(typeProjection.variance == KmVariance.IN) {
+          "[Ljava/lang/Object;"
+        } else {
+          val classifier = arrayType.classifier as KmClassifier.Class
+          "[${jvmTypeSignatureFromName(classifier.name, true, arrayType.arguments)}"
+        }
+      }
+    }
+    else -> "L$kotlinClassName;"
+  }.replace('.', '$')
 }

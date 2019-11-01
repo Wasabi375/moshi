@@ -34,6 +34,8 @@ import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asTypeName
+import com.squareup.kotlinpoet.metadata.ImmutableKmType
+import com.squareup.kotlinpoet.metadata.isInternal
 
 internal fun TypeName.rawType(): ClassName {
   return when (this) {
@@ -91,5 +93,14 @@ internal fun TypeName.asTypeBlock(): CodeBlock {
 internal fun KModifier.checkIsVisibility() {
   require(ordinal <= ordinal) {
     "Visibility must be one of ${(0..ordinal).joinToString { KModifier.values()[it].name }}. Is $name"
+  }
+}
+
+internal fun TypeName.inlineIfPossible(): TypeName {
+  return  if(this !is ClassName) this
+  else {
+    val kmType = tag(ImmutableKmType::class) ?: return this
+
+    this
   }
 }

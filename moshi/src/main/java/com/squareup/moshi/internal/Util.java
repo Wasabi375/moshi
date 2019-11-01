@@ -32,6 +32,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -619,5 +620,21 @@ public final class Util {
           propertyName, jsonName, path);
     }
     return new JsonDataException(message);
+  }
+
+  public static Object unwrapInlinedValue(Object wrapped) {
+    Class<?> clazz = wrapped.getClass();
+    if (!isKotlin(clazz)) {
+      throw new IllegalArgumentException("Only inline classes can be unwrapped!");
+    }
+    Field[] fields = clazz.getDeclaredFields();
+    assert (fields.length == 1);
+    Field inlineField = fields[0];
+    inlineField.setAccessible(true);
+    try {
+      return inlineField.get(wrapped);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

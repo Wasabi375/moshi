@@ -24,12 +24,14 @@ internal data class TargetProperty(
   val propertySpec: PropertySpec,
   val parameter: TargetParameter?,
   val visibility: KModifier,
-  val jsonName: String?
+  val jsonName: String?,
+  val inlinedType: TypeName?
 ) {
   val name: String get() = propertySpec.name
   val type: TypeName get() = propertySpec.type
   val parameterIndex get() = parameter?.index ?: -1
   val hasDefault get() = parameter?.hasDefault ?: true
+  val inlinedTypeOrType get() = inlinedType ?: type
 
   override fun toString() = name
 }

@@ -269,6 +269,12 @@ class DualKotlinTest(useReflection: Boolean) {
   @JsonClass(generateAdapter = true)
   data class InlineConsumer(val inline: InlineClass)
 
+  @JsonClass(generateAdapter = true)
+  class InlineConsumerWithDefault(val inline: InlineClass = InlineClass(2))
+
+  @JsonClass(generateAdapter = true)
+  class InlineConsumerWithDefault2(val inline: InlineClass, val foo: Int = 3)
+
   @Test fun inlineClassConsumer() {
     val adapter = moshi.adapter<InlineConsumer>()
 
@@ -282,6 +288,37 @@ class DualKotlinTest(useReflection: Boolean) {
     val testJson = """{"inline":{"i":42}}"""
     val result = adapter.fromJson(testJson)!!
     assertThat(result.inline.i).isEqualTo(42)
+  }
+
+  @Test fun inlineClassConsumerWithDefault() {
+    val adapter = moshi.adapter<InlineConsumerWithDefault>()
+
+    val consumer = InlineConsumerWithDefault(InlineClass(23))
+
+    @Language("JSON")
+    val expectedJson = """{"inline":{"i":23}}"""
+    assertThat(adapter.toJson(consumer)).isEqualTo(expectedJson)
+
+    @Language("JSON")
+    val testJson = """{}"""
+    val result = adapter.fromJson(testJson)!!
+    assertThat(result.inline.i).isEqualTo(2)
+  }
+
+  @Test fun inlineClassConsumerWithDefault2() {
+    val adapter = moshi.adapter<InlineConsumerWithDefault2>()
+
+    val consumer = InlineConsumerWithDefault2(InlineClass(23))
+
+    @Language("JSON")
+    val expectedJson = """{"inline":{"i":23},"foo":3}"""
+    assertThat(adapter.toJson(consumer)).isEqualTo(expectedJson)
+
+    @Language("JSON")
+    val testJson = """{"inline":{"i":23}}"""
+    val result = adapter.fromJson(testJson)!!
+    assertThat(result.inline.i).isEqualTo(23)
+    assertThat(result.foo).isEqualTo(3)
   }
 
   // Regression test for https://github.com/square/moshi/issues/955
