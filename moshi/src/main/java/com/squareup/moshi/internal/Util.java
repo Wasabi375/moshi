@@ -25,14 +25,16 @@ import com.squareup.moshi.Types;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
-import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -627,9 +629,16 @@ public final class Util {
     if (!isKotlin(clazz)) {
       throw new IllegalArgumentException("Only inline classes can be unwrapped!");
     }
-    Field[] fields = clazz.getDeclaredFields();
-    assert (fields.length == 1);
-    Field inlineField = fields[0];
+
+    ArrayList<Field> fields = new ArrayList<Field>();
+    for (Field f : clazz.getDeclaredFields()) {
+      if (!Modifier.isStatic(f.getModifiers())) {
+        fields.add(f);
+      }
+    }
+
+    assert (fields.size() == 1);
+    Field inlineField = fields.get(0);
     inlineField.setAccessible(true);
     try {
       return inlineField.get(wrapped);
