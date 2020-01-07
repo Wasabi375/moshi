@@ -398,8 +398,13 @@ internal class AdapterGenerator(
         } else {
           val property = (input as ParameterProperty).property
           if(property.target.inlinedType != null) {
-            result.addCode("%N?.let{%T.unwrapInlinedValue(it)} ?: %L",
-              property.localName, MOSHI_UTIL, property.target.inlinedType.rawType().defaultPrimitiveValue())
+            val defaultPrimitiveValue = property.target.inlinedType.rawType().defaultPrimitiveValue()
+            if(defaultPrimitiveValue.toString() == "null"){
+              result.addCode("%N?.let{%T.unwrapInlinedValue(it)}", property.localName, MOSHI_UTIL)
+            } else {
+              result.addCode("%N?.let{%T.unwrapInlinedValue(it)} ?: %L",
+                property.localName, MOSHI_UTIL, defaultPrimitiveValue)
+            }
           } else {
             result.addCode("%N", property.localName)
           }
